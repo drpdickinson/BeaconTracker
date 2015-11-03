@@ -9,8 +9,13 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Vibrator;
+import android.support.v4.view.GestureDetectorCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.RotateAnimation;
@@ -18,7 +23,7 @@ import android.widget.TextView;
 
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity implements OnScanListener, OnScanListListener, SensorEventListener {
+public class MainActivity extends AppCompatActivity implements OnScanListener, OnScanListListener, SensorEventListener, GestureDetector.OnGestureListener {
 
     String TAG = "MainActivity";
     BluetoothScanner bluetooth_scanner;
@@ -43,6 +48,11 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     private float mAzInRadians = 0.0f;
     private float mAzOffset = 1.04f; //pi / 3
     private float[] mDirnRelToMap = new float[2]; //direction vector in map world
+    private float mCompassX;
+    private float mCompassY;
+    private float mCompassRad;
+    //Patrick: UI stuff
+    private GestureDetectorCompat mDetector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,6 +68,9 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mMagnetometer = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         //senSensorManager.registerListener(this, senMagnet , SensorManager.SENSOR_DELAY_GAME);
+        mCompassX = map_view.getX(map_view.x_max) - 60;
+        mCompassY = map_view.getY(0.0) - 20;
+        mCompassRad = 40.0f;
     }
 
     @Override
@@ -68,6 +81,7 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_GAME);
         mSensorManager.registerListener(this, mMagnetometer, SensorManager.SENSOR_DELAY_GAME);
         //senSensorManager.registerListener(this, senMagnet, SensorManager.SENSOR_DELAY_NORMAL);
+        mDetector = new GestureDetectorCompat(this,this);
     }
 
     @Override
@@ -120,16 +134,6 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             SensorManager.getOrientation(mR, mOrientation);
             float azimuthInRadians = mOrientation[0];
             float azimuthInDegress = (float)(Math.toDegrees(azimuthInRadians)+360)%360;
-            //RotateAnimation ra = new RotateAnimation(
-            //        mCurrentDegree,
-            //        -azimuthInDegress,
-            //        Animation.RELATIVE_TO_SELF, 0.5f,
-            //        Animation.RELATIVE_TO_SELF,
-            //        0.5f);
-
-            //ra.setDuration(250);
-            //ra.setFillAfter(true);
-
             mCurrentDegree = -azimuthInDegress;
             magString = "Azimuth: " + azimuthInDegress;
             mAzInRadians = azimuthInRadians;
@@ -140,33 +144,67 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
                 }
             });
         }
-        /*
-        if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
-            // calculate th rotation matrix
-            SensorManager.getRotationMatrixFromVector(rMat, event.values);
-            // get the azimuth value (orientation[0]) in degree
-            int mAzimuth = (int) (Math.toDegrees(SensorManager.getOrientation(rMat, orientation)[0]) + 360) % 360;
-            TextView tv = (TextView) findViewById(R.id.textView100);
-            tv.setText("Azimuth: " + mAzimuth);
-
-            RotateAnimation ra = new RotateAnimation(
-                    mCurrentDegree,
-                    -mAzimuth,
-                    Animation.RELATIVE_TO_SELF, 0.5f,
-                    Animation.RELATIVE_TO_SELF,
-                    0.5f);
-            ra.setDuration(250);
-            ra.setFillAfter(true);
-            mPointer.startAnimation(ra);
-            mCurrentDegree = -mAzimuth;
-        }
-        */
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
     }
+
+    // ////////////////////////////////////////////////
+    //Patrick : Added UI functions
+    // ////////////////////////////////////////////////
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event){
+        this.mDetector.onTouchEvent(event);
+        // Be sure to call the superclass implementation
+        return super.onTouchEvent(event);
+    }
+
+    @Override
+    public boolean onDown(MotionEvent event) {
+        return true;
+    }
+
+    @Override
+    public boolean onFling(MotionEvent event1, MotionEvent event2,
+                           float velocityX, float velocityY) {
+        return true;
+    }
+
+    @Override
+    public void onLongPress(MotionEvent event) {
+        //if within compass then reset orientation offset
+        float hack = 200.0f;
+        float x = (event.getX() - mCompassX)*(event.getX() - mCompassX);
+        float y = (event.getY() - mCompassY - hack)*(event.getY() - mCompassY - hack);
+        float r = (float)Math.sqrt(x+y);
+        Log.d("P:", "onDoubleTapEvent: " + event.toString());
+        Log.d("P:", "onDoubleTapEvent: " + x + " " + y + " " + r);
+
+        if(r<=mCompassRad) {
+            Vibrator v = (Vibrator) this.getSystemService(Context.VIBRATOR_SERVICE);
+            // Vibrate for 500 milliseconds
+            v.vibrate(500);
+            mAzOffset = mAzInRadians;
+        }
+    }
+
+    @Override
+    public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX,
+                            float distanceY) {
+        return true;
+    }
+
+    @Override
+    public void onShowPress(MotionEvent event) {
+    }
+
+    @Override
+    public boolean onSingleTapUp(MotionEvent event) {
+        return true;
+    }
+
 
     class MapView extends View {
         int width, height;
@@ -267,25 +305,25 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             //Draw Compass - Patrick
             //1. Central Circle
             paint.setColor(Color.argb(255, 0, 255, 255));
-            float compassX = getX(x_max) - 60;
-            float compassY = getY(0.0) - 20;
-            float circleRad = 40.0f;
-            canvas.drawCircle(compassX, compassY, circleRad, paint);
+            mCompassX = getX(x_max) - 60;
+            mCompassY = getY(0.0) - 20;
+            mCompassRad = 40.0f;
+            canvas.drawCircle(mCompassX, mCompassY, mCompassRad, paint);
             //2. Draw North
             //y = cos(Az), x = -Sin(Az)
             paint.setColor(Color.argb(32, 0, 0, 0));
-            float compassXN = compassX - ((float)Math.sin(mAzInRadians))*circleRad*0.9f;
-            float compassYN = compassY - ((float)Math.cos(mAzInRadians))*circleRad*0.9f;
+            float compassXN = mCompassX - ((float)Math.sin(mAzInRadians))*mCompassRad*0.9f;
+            float compassYN = mCompassY - ((float)Math.cos(mAzInRadians))*mCompassRad*0.9f;
             paint.setStrokeWidth(5);
-            canvas.drawLine(compassX, compassY, compassXN, compassYN, paint);
+            canvas.drawLine(mCompassX, mCompassY, compassXN, compassYN, paint);
             //3. Draw Orientation relative to offset
             paint.setColor(Color.argb(255, 255, 0, 0));
             mDirnRelToMap[0] = (float)Math.sin(mAzOffset - mAzInRadians);
             mDirnRelToMap[1] = (float)Math.cos(mAzOffset - mAzInRadians);
-            float compassXOS = compassX - (mDirnRelToMap[0])*circleRad;
-            float compassYOS = compassY - (mDirnRelToMap[1])*circleRad;
+            float compassXOS = mCompassX - (mDirnRelToMap[0])*mCompassRad;
+            float compassYOS = mCompassY - (mDirnRelToMap[1])*mCompassRad;
             paint.setStrokeWidth(5);
-            canvas.drawLine(compassX,compassY,compassXOS,compassYOS,paint);
+            canvas.drawLine(mCompassX,mCompassY,compassXOS,compassYOS,paint);
 
             //draw some text
             //paint.setTypeface(Typeface.SERIF);
@@ -294,4 +332,6 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             //canvas.drawText(magString,500f,40f,paint);
         }
     }
+
+
 }
