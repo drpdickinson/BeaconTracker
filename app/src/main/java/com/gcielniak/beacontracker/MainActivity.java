@@ -1,6 +1,7 @@
 package com.gcielniak.beacontracker;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -53,6 +54,9 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     private float mCompassRad;
     //Patrick: UI stuff
     private GestureDetectorCompat mDetector;
+    //Patrick: for saving relative orientation
+    public static final String mPrefFileName = "PrefsBeacon";
+    public static final String mPrefKey0 = "PrefsOrient0";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,6 +75,9 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         mCompassX = map_view.getX(map_view.x_max) - 60;
         mCompassY = map_view.getY(0.0) - 20;
         mCompassRad = 40.0f;
+        //load the last saved orientation offset
+        SharedPreferences settings = getSharedPreferences(mPrefFileName, 0);
+        mAzOffset = settings.getFloat(mPrefKey0, 0.0f);
     }
 
     @Override
@@ -187,6 +194,11 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             // Vibrate for 500 milliseconds
             v.vibrate(500);
             mAzOffset = mAzInRadians;
+            //save the orientation offset
+            SharedPreferences settings = getSharedPreferences(mPrefFileName, 0);
+            SharedPreferences.Editor editor = settings.edit();
+            editor.putFloat(mPrefKey0, mAzOffset);
+            editor.commit();
         }
     }
 
