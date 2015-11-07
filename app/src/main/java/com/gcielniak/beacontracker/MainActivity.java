@@ -10,6 +10,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.SystemClock;
 import android.os.Vibrator;
 import android.support.v4.view.GestureDetectorCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -22,6 +23,7 @@ import android.view.animation.Animation;
 import android.view.animation.RotateAnimation;
 import android.widget.TextView;
 
+import java.io.IOException;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements OnScanListener, OnScanListListener, SensorEventListener, GestureDetector.OnGestureListener {
@@ -38,6 +40,11 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     String magString = "0000";
     private Sensor mAccelerometer;
     private Sensor mMagnetometer;
+    private Sensor mLinAccelerometer;
+    private Sensor mGravityAccelerometer;
+    private Sensor mStepSensor1;
+    private Sensor mStepSensor2;
+
     private float[] mLastAccelerometer = new float[3];
     private float[] mLastMagnetometer = new float[3];
     private boolean mLastAccelerometerSet = false;
@@ -57,6 +64,19 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     //Patrick: for saving relative orientation
     public static final String mPrefFileName = "PrefsBeacon";
     public static final String mPrefKey0 = "PrefsOrient0";
+    //for step detection
+    private float[] mGravity = new float[3];
+    float mGravityMagnitude = 0f;
+    private float[] mGravityDirn = new float[3];
+    private float[] mLinAccn = new float[3];
+    private float mLinAcParaG;
+    private float[] mLinAcPerpG = new float[3];
+    float alpha = 0.9f;
+    boolean aboveThreshold = false;
+    int belowThresholdCount = 0;
+    double thresholdVal = 2.5;
+    double gapVal = 12;
+    int nSteps = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,7 +91,11 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mMagnetometer = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        //senSensorManager.registerListener(this, senMagnet , SensorManager.SENSOR_DELAY_GAME);
+        mLinAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        mGravityAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+        mStepSensor1 = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
+        mStepSensor2 = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+
         mCompassX = map_view.getX(map_view.x_max) - 60;
         mCompassY = map_view.getY(0.0) - 20;
         mCompassRad = 40.0f;
@@ -87,8 +111,15 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         bluetooth_scanner.Start();
         mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_GAME);
         mSensorManager.registerListener(this, mMagnetometer, SensorManager.SENSOR_DELAY_GAME);
-        //senSensorManager.registerListener(this, senMagnet, SensorManager.SENSOR_DELAY_NORMAL);
+        mSensorManager.registerListener(this, mLinAccelerometer , SensorManager.SENSOR_DELAY_GAME);
+        mSensorManager.registerListener(this, mGravityAccelerometer , SensorManager.SENSOR_DELAY_GAME);
+        mSensorManager.registerListener(this, mStepSensor1 , SensorManager.SENSOR_DELAY_GAME);
+        mSensorManager.registerListener(this, mStepSensor2 , SensorManager.SENSOR_DELAY_GAME);
         mDetector = new GestureDetectorCompat(this,this);
+        //initialise gravity
+        mGravity[0] = 0.0f;
+        mGravity[1] = 0.0f;
+        mGravity[2] = 9.8f;
     }
 
     @Override
@@ -97,6 +128,8 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         bluetooth_scanner.Stop();
         mSensorManager.unregisterListener(this, mAccelerometer);
         mSensorManager.unregisterListener(this, mMagnetometer);
+        mSensorManager.unregisterListener(this, mGravityAccelerometer);
+        mSensorManager.unregisterListener(this, mLinAccelerometer);
     }
 
     @Override
@@ -128,11 +161,49 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         {
             System.arraycopy(event.values, 0, mLastAccelerometer, 0, event.values.length);
             mLastAccelerometerSet = true;
+
+            /*------------------------------------------------------------------------
+               Holding phone flat gives                 0,0,9.8  (upside down, -9.8)
+               Holding phone directly up                0,9.8,0
+               Holding phone directly up and on side    9.8,0,0
+            --------------------------------------------------------------------------*/
+            float oneMinusAlpha = 1.0f - alpha;
+            mGravity[0] = ((mGravity[0] * alpha) + (mLastAccelerometer[0] * oneMinusAlpha));
+            mGravity[1] = ((mGravity[1] * alpha) + (mLastAccelerometer[1] * oneMinusAlpha));
+            mGravity[2] = ((mGravity[2] * alpha) + (mLastAccelerometer[2] * oneMinusAlpha));
+            mGravityMagnitude = (float)Math.sqrt((double)((mGravity[0]*mGravity[0])+(mGravity[1]*mGravity[1])+(mGravity[2]*mGravity[2])));
+            mGravityDirn[0] = mGravity[0]/mGravityMagnitude;
+            mGravityDirn[1] = mGravity[1]/mGravityMagnitude;
+            mGravityDirn[2] = mGravity[2]/mGravityMagnitude;
+            //find Linear Acceleration (Gravity removed)
+            mLinAccn[0] = mLastAccelerometer[0] - mGravity[0];
+            mLinAccn[1] = mLastAccelerometer[1] - mGravity[1];
+            mLinAccn[2] = mLastAccelerometer[2] - mGravity[2];
+            //resolve linear acceleration parallel and perpendicular to gravity
+            mLinAcParaG = (mLinAccn[0]*mGravityDirn[0])+(mLinAccn[1]*mGravityDirn[1])+(mLinAccn[2]*mGravityDirn[2]);
+            mLinAcPerpG[0] = mLinAccn[0] - mGravityDirn[0]*mLinAcParaG;
+            mLinAcPerpG[1] = mLinAccn[1] - mGravityDirn[1]*mLinAcParaG;
+            mLinAcPerpG[2] = mLinAccn[2] - mGravityDirn[2]*mLinAcParaG;
         }
         else if (event.sensor == mMagnetometer)
         {
             System.arraycopy(event.values, 0, mLastMagnetometer, 0, event.values.length);
             mLastMagnetometerSet = true;
+        }
+        else if (mySensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
+            Log.d("P:", "LINEAR ACCN");
+
+        }
+        else if (mySensor.getType() == Sensor.TYPE_GRAVITY ){
+            Log.d("P:", "GRAVITY");
+        }
+        else if (mySensor.getType() == Sensor.TYPE_STEP_DETECTOR) {
+            Log.d("P:", "STEP 1");
+
+        }
+        else if (mySensor.getType() == Sensor.TYPE_STEP_COUNTER) {
+            Log.d("P:", "STEP 2");
+
         }
 
         if (mLastAccelerometerSet && mLastMagnetometerSet)
@@ -151,6 +222,7 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
                 }
             });
         }
+
     }
 
     @Override
@@ -336,12 +408,13 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             float compassYOS = mCompassY - (mDirnRelToMap[1])*mCompassRad;
             paint.setStrokeWidth(5);
             canvas.drawLine(mCompassX,mCompassY,compassXOS,compassYOS,paint);
-
-            //draw some text
-            //paint.setTypeface(Typeface.SERIF);
-            //paint.setColor(Color.BLACK);
-            //paint.setTextSize(24);
-            //canvas.drawText(magString,500f,40f,paint);
+            //draw some text : raw acceleratometer values
+            paint.setTypeface(Typeface.SERIF);
+            paint.setColor(Color.BLACK);
+            paint.setTextSize(24);
+            canvas.drawText(Float.toString(mLastAccelerometer[0]), 400f, 940f, paint);
+            canvas.drawText(Float.toString(mLastAccelerometer[1]), 400f, 965f, paint);
+            canvas.drawText(Float.toString(mLastAccelerometer[2]), 400f, 990f, paint);
         }
     }
 
