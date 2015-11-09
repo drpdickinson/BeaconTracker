@@ -10,6 +10,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.os.Vibrator;
 import android.support.v4.view.GestureDetectorCompat;
@@ -23,6 +24,8 @@ import android.view.animation.Animation;
 import android.view.animation.RotateAnimation;
 import android.widget.TextView;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
 
@@ -44,7 +47,6 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     private Sensor mGravityAccelerometer;
     private Sensor mStepSensor1;
     private Sensor mStepSensor2;
-
     private float[] mLastAccelerometer = new float[3];
     private float[] mLastMagnetometer = new float[3];
     private boolean mLastAccelerometerSet = false;
@@ -59,11 +61,14 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     private float mCompassX;
     private float mCompassY;
     private float mCompassRad;
+
     //Patrick: UI stuff
     private GestureDetectorCompat mDetector;
+
     //Patrick: for saving relative orientation
     public static final String mPrefFileName = "PrefsBeacon";
     public static final String mPrefKey0 = "PrefsOrient0";
+
     //for step detection
     private float[] mGravity = new float[3];
     float mGravityMagnitude = 0f;
@@ -77,6 +82,16 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
     double thresholdVal = 2.5;
     double gapVal = 12;
     int nSteps = 0;
+
+    //Patrick: logging accelerometer data
+    private boolean bExternalStore = false;
+    private boolean bWriteAccelData = true;
+    File file;
+    FileWriter filewr;
+    File file2;
+    FileWriter filewr2;
+    File file3;
+    FileWriter filewr3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -102,6 +117,48 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         //load the last saved orientation offset
         SharedPreferences settings = getSharedPreferences(mPrefFileName, 0);
         mAzOffset = settings.getFloat(mPrefKey0, 0.0f);
+
+        //Patrick: set up external files for logging accelerometer data
+        String state = Environment.getExternalStorageState();
+        if ((Environment.MEDIA_MOUNTED.equals(state))&&(bWriteAccelData)) {
+            bExternalStore = true;
+            Log.e("pdlog", "Setting up file");
+            file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "BT-stepcounter.txt");
+            if(file.exists()) file.delete();
+            try {file.createNewFile();}
+            catch (IOException ioe)
+            {
+                    Log.e("pdlog", "Error creating stepcounter.txt");
+            }
+            try {filewr = new FileWriter(file,true);} catch (IOException ioe) {Log.e("pdlog", "Error creating filewriter");}
+            try{
+                filewr.write("********************************************\n");
+                filewr.flush();
+            } catch (IOException ioe) {Log.e("pdlog", "filewriter write error");}
+            //*****************Parallel to gravity
+            file2 = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "BT-parallel-to-gravity.txt");
+            if(file2.exists()) file2.delete();
+            try {file2.createNewFile();}
+            catch (IOException ioe) {Log.e("pdlog", "Error creating parallel-to-gravity.txt");}
+            try {filewr2 = new FileWriter(file2,true);} catch (IOException ioe) {Log.e("pdlog", "Error creating BT-parallel-to-gravity.txt");}
+            try{
+                filewr2.write("#############################################\n");
+                filewr2.flush();
+            } catch (IOException ioe) {Log.e("pdlog", "filewriter write error");}
+            //*****************Perpendicular to gravity
+            file3 = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "BT-perpendicular-to-gravity.txt");
+            if(file3.exists()) file3.delete();
+            try {file3.createNewFile();}
+            catch (IOException ioe) {Log.e("pdlog", "Error creating perpendicular-to-gravity.txt");}
+            try {filewr3 = new FileWriter(file3,true);} catch (IOException ioe) {Log.e("pdlog", "Error creating BT-perpendicular-to-gravity.txt");}
+            try{
+                filewr3.write("#############################################\n");
+                filewr3.flush();
+            } catch (IOException ioe) {Log.e("pdlog", "filewriter write error");}
+            //**************************************************
+        } else {
+            bExternalStore = false;
+        }
     }
 
     @Override
@@ -154,6 +211,7 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
         });
     }
 
+
     public void onSensorChanged(SensorEvent event) {
         Sensor mySensor = event.sensor;
 
@@ -184,6 +242,45 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             mLinAcPerpG[0] = mLinAccn[0] - mGravityDirn[0]*mLinAcParaG;
             mLinAcPerpG[1] = mLinAccn[1] - mGravityDirn[1]*mLinAcParaG;
             mLinAcPerpG[2] = mLinAccn[2] - mGravityDirn[2]*mLinAcParaG;
+
+            //Patrick: log accelerometer data for debugging
+            if ((bExternalStore)&&(bWriteAccelData)) {
+                double mag = Math.sqrt((mLastAccelerometer[0] * mLastAccelerometer[0]) + (mLastAccelerometer[1] * mLastAccelerometer[1]) + (mLastAccelerometer[2] * mLastAccelerometer[2]));
+                try {
+                    String s = Double.toString(mag);
+                    String ss = "";
+                    if (s.length() > 7) ss = s.substring(0, 6);
+                    else ss = s;
+                    filewr.write(ss + "\n");
+                    filewr.flush();
+                } catch (IOException ioe) {
+                    Log.e("pdlog", "filewriter write error");
+                }
+
+                double mag1 = mLinAcParaG;
+                double x2 = mLinAcPerpG[0];
+                double y2 = mLinAcPerpG[1];
+                double z2 = mLinAcPerpG[2];
+                double mag2 = Math.sqrt((x2 * x2) + (y2 * y2) + (z2 * z2));
+                try {
+                    String s = Double.toString(mag1);
+                    String ss = "";
+                    if (s.length() > 7) ss = s.substring(0, 6);
+                    else ss = s;
+                    filewr2.write(ss + "\n");
+                    filewr2.flush();
+                    s = Double.toString(mag2);
+                    ss = "";
+                    if (s.length() > 7) ss = s.substring(0, 6);
+                    else ss = s;
+                    filewr3.write(ss + "\n");
+                    filewr3.flush();
+
+                } catch (IOException ioe) {
+                    Log.e("pdlog", "filewriter write error");
+                }
+            }
+
         }
         else if (event.sensor == mMagnetometer)
         {
