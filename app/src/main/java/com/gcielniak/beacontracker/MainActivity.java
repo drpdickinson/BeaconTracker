@@ -156,6 +156,7 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
                 filewr3.flush();
             } catch (IOException ioe) {Log.e("pdlog", "filewriter write error");}
             //**************************************************
+            //bWriteAccelData = false;
         } else {
             bExternalStore = false;
         }
@@ -252,6 +253,7 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
                     if (s.length() > 7) ss = s.substring(0, 6);
                     else ss = s;
                     filewr.write(ss + "\n");
+                    //Log.e("pdlog", "LOG-LOG");
                     filewr.flush();
                 } catch (IOException ioe) {
                     Log.e("pdlog", "filewriter write error");
@@ -369,6 +371,9 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             editor.putFloat(mPrefKey0, mAzOffset);
             editor.commit();
         }
+
+        //bWriteAccelData = true;
+        //Log.e("pdlog", "write data : "+bWriteAccelData);
     }
 
     @Override
@@ -512,6 +517,7 @@ public class MainActivity extends AppCompatActivity implements OnScanListener, O
             canvas.drawText(Float.toString(mLastAccelerometer[0]), 400f, 940f, paint);
             canvas.drawText(Float.toString(mLastAccelerometer[1]), 400f, 965f, paint);
             canvas.drawText(Float.toString(mLastAccelerometer[2]), 400f, 990f, paint);
+            //canvas.drawText((Boolean.toString(bWriteAccelData)), 200f, 990f, paint);
         }
     }
 
