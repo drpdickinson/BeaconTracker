@@ -13,11 +13,17 @@ public class BluetoothScanner {
     Pose current_pose;
     BluetoothAdapter adapter;
     BluetoothScanReceiver receiver;
+    //add logger, patrick
+    ScanLogger logger;
+    BluetoothScanReceiver receiver2;
 
     BluetoothScanner(OnScanListener listener) {
         adapter = BluetoothAdapter.getDefaultAdapter();
         receiver = new BluetoothScanReceiver(listener);
         current_pose = new Pose();
+
+        logger = new ScanLogger();
+        receiver2 = new BluetoothScanReceiver(logger);
     }
 
     public void UpdatePose(Pose current_pose) {
@@ -25,11 +31,15 @@ public class BluetoothScanner {
     }
 
     public void Start() {
+        logger.Start();
         adapter.startLeScan(receiver);
+        adapter.startLeScan(receiver2);
     }
 
     public void Stop() {
+        //logger.Stop(this);
         adapter.stopLeScan(receiver);
+        adapter.startLeScan(receiver2);
     }
 
     private class BluetoothScanReceiver implements BluetoothAdapter.LeScanCallback {
